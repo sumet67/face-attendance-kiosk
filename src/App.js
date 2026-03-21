@@ -8,7 +8,8 @@ import {
 // --- CONFIGURATION ---
 const ADMIN_PASSWORD = "1234";
 
-/** * วาง URL ที่ได้จาก Google Apps Script (Web App URL) ที่นี่
+/** * คัดลอก "Web App URL" ที่ได้จากขั้นตอน Deploy ใน Google Apps Script มาวางที่นี่
+ * ตัวอย่าง: https://script.google.com/macros/s/XXXXX/exec
  */
 const GOOGLE_SHEET_WEBAPP_URL = ""; 
 
@@ -30,7 +31,10 @@ const App = () => {
 
   // ดึงข้อมูลจาก Google Sheets
   const fetchDataFromSheets = async () => {
-    if (!GOOGLE_SHEET_WEBAPP_URL) return;
+    if (!GOOGLE_SHEET_WEBAPP_URL) {
+      console.warn("ยังไม่ได้ใส่ Web App URL ของ Google Sheets");
+      return;
+    }
     setIsSyncing(true);
     try {
       const response = await fetch(GOOGLE_SHEET_WEBAPP_URL);
@@ -46,16 +50,28 @@ const App = () => {
 
   // ส่งข้อมูลไปบันทึกที่ Google Sheets
   const postToSheets = async (payload) => {
-    if (!GOOGLE_SHEET_WEBAPP_URL) return;
+    if (!GOOGLE_SHEET_WEBAPP_URL) {
+      console.error("ไม่สามารถบันทึกได้: ยังไม่ได้ใส่ Web App URL");
+      return;
+    }
+    
     try {
+      // ใช้ fetch แบบ 'no-cors' สำหรับ Apps Script POST 
+      // หรือใช้รูปแบบปกติถ้า Apps Script รองรับ CORS สมบูรณ์
       await fetch(GOOGLE_SHEET_WEBAPP_URL, {
         method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        mode: 'no-cors', 
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(payload)
       });
+      
+      // เนื่องจาก no-cors จะไม่คืนค่าตอบกลับที่อ่านได้ เราจะลองรีเฟรชข้อมูลหลังส่ง 2 วินาที
+      setTimeout(fetchDataFromSheets, 2000);
+      
     } catch (error) {
-      console.error("Error posting data:", error);
+      console.error("Error posting data to Sheets:", error);
     }
   };
 
@@ -99,7 +115,10 @@ const App = () => {
     setLogs(prev => [newLog, ...prev]);
     setLastLog(newLog);
     setIdentifiedUser(null);
+    
+    // ส่งไป Google Sheets
     await postToSheets(newLog);
+    
     setTimeout(() => setLastLog(null), 4000);
   };
 
@@ -113,20 +132,21 @@ const App = () => {
       joined: new Date().toLocaleDateString('th-TH') 
     };
     setEmployeeData(prev => [...prev, newEntry]);
+    
+    // ส่งไป Google Sheets
     await postToSheets(newEntry);
+    
     setNewName('');
   };
 
   if (appMode === 'kiosk') {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden text-slate-200">
-        {/* Animated Background Gradients */}
         <div className="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600 rounded-full blur-[120px]"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600 rounded-full blur-[120px]"></div>
         </div>
 
-        {/* Header Section */}
         <div className="absolute top-8 left-8 right-8 flex justify-between items-center z-20">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
@@ -147,14 +167,10 @@ const App = () => {
           </div>
         </div>
 
-        {/* Main Interface */}
         <div className="relative w-full max-w-6xl z-10 flex flex-col lg:flex-row gap-10 items-stretch pb-16">
-          {/* Camera View Area */}
           <div className="flex-1 space-y-6">
             <div className="bg-black rounded-[3rem] overflow-hidden shadow-[0_0_60px_-15px_rgba(79,70,229,0.3)] aspect-video relative border-[12px] border-slate-900 group">
               <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
-              
-              {/* Scan Overlay */}
               <div className="absolute inset-0 border-[2px] border-white/10 rounded-[2.2rem] pointer-events-none"></div>
               
               {isModelLoading && (
@@ -176,7 +192,6 @@ const App = () => {
               )}
             </div>
 
-            {/* Status Bar */}
             <div className="bg-slate-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex items-center justify-between shadow-xl">
                <div className="flex items-center gap-6">
                   <div className={`p-5 rounded-3xl transition-colors duration-500 ${identifiedUser ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
@@ -199,7 +214,6 @@ const App = () => {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="w-full lg:w-80 flex flex-col gap-6">
             <button 
               onClick={() => handleRecord('IN')} 
@@ -227,7 +241,6 @@ const App = () => {
           </div>
         </div>
 
-        {/* Footer Settings Button */}
         <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50">
           <button onClick={() => setShowExitConfirm(true)} className="flex items-center gap-3 px-10 py-4 bg-white/5 hover:bg-white/10 text-slate-500 hover:text-slate-300 transition-all rounded-full border border-white/5 backdrop-blur-md group">
             <Settings size={16} className="group-hover:rotate-90 transition-transform duration-500" />
@@ -235,7 +248,6 @@ const App = () => {
           </button>
         </div>
 
-        {/* Admin PIN Overlay */}
         {showExitConfirm && (
           <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
             <div className="bg-slate-900 rounded-[3rem] p-12 max-w-sm w-full border border-white/10 shadow-2xl">
@@ -260,7 +272,6 @@ const App = () => {
     );
   }
 
-  // --- ADMIN DASHBOARD RENDER (Simplified for demo) ---
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-700 overflow-hidden font-sans">
       <aside className="w-72 bg-slate-900 text-slate-300 flex flex-col shrink-0">
@@ -324,7 +335,7 @@ const App = () => {
                       <td className="px-8 py-5">
                          <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors font-black text-xs">
-                               {log.name.charAt(0)}
+                               {log.name ? log.name.charAt(0) : '?'}
                             </div>
                             <span className="font-bold text-slate-700">{log.name}</span>
                          </div>
