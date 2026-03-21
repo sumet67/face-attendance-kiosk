@@ -11,7 +11,7 @@ const ADMIN_PASSWORD = "1234";
 /**
  * สำคัญ: นำ URL ที่ได้จากการ Deploy Google Apps Script (เวอร์ชันใหม่) มาวางที่นี่
  */
-const GOOGLE_SHEET_WEBAPP_URL = ""; 
+const GOOGLE_SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwzyYPzOfh6ARKhA_ynIz24pm2swxuxJtyI3e9CFvZnY9DAbjYTQYK2VPRYHbXy83OKnA/exec"; 
 
 const App = () => {
   const [appMode, setAppMode] = useState('kiosk');
