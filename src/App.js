@@ -11,7 +11,7 @@ const ADMIN_PASSWORD = "1234";
 /** * คัดลอก "Web App URL" ที่ได้จากขั้นตอน Deploy ใน Google Apps Script มาวางที่นี่
  * ตัวอย่าง: https://script.google.com/macros/s/XXXXX/exec
  */
-const GOOGLE_SHEET_WEBAPP_URL = ""; 
+const GOOGLE_SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwAC46b3XVP9wZ_XZkd16-sjKqVJYVq1RIHiXEfHYinnbA4T-GVMCsfgKQefrQE7NJqnQ/exec"; 
 
 const App = () => {
   const [appMode, setAppMode] = useState('kiosk');
