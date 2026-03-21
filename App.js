@@ -9,10 +9,9 @@ import {
 const ADMIN_PASSWORD = "1234";
 
 /**
- * สำคัญ: นำ URL ที่ได้จากการ Deploy Google Apps Script มาวางในเครื่องหมายคำพูดด้านล่าง
- * หากยังไม่มี ให้เว้นเป็น "" ไว้ก่อน แอปจะยังทำงานได้ในโหมด Local
+ * สำคัญ: นำ URL ที่ได้จากการ Deploy Google Apps Script (เวอร์ชันใหม่) มาวางที่นี่
  */
-const GOOGLE_SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxPbpA884oIpm4Tgsgb7QAFiFTLbCRssObYcW86unZ5LAdwP_pMbu_6kQGfj70ziED7Yw/exec"; 
+const GOOGLE_SHEET_WEBAPP_URL = ""; 
 
 const App = () => {
   const [appMode, setAppMode] = useState('kiosk');
@@ -30,12 +29,9 @@ const App = () => {
 
   const videoRef = useRef(null);
 
-  // ฟังก์ชันดึงข้อมูลจาก Sheets
+  // ดึงข้อมูลจาก Sheets (รองรับโครงสร้างแบบแถวเดียว)
   const fetchDataFromSheets = async () => {
-    if (!GOOGLE_SHEET_WEBAPP_URL || GOOGLE_SHEET_WEBAPP_URL.trim() === "") {
-      console.log("No Google Sheet URL provided. Running in local mode.");
-      return;
-    }
+    if (!GOOGLE_SHEET_WEBAPP_URL || GOOGLE_SHEET_WEBAPP_URL.trim() === "") return;
     
     setIsSyncing(true);
     try {
@@ -44,6 +40,7 @@ const App = () => {
       const data = await response.json();
       if (data) {
         setEmployeeData(data.employees || []);
+        // จัดเรียงข้อมูล logs (ล่าสุดอยู่บน)
         setLogs(data.logs || []);
       }
     } catch (error) {
@@ -53,12 +50,8 @@ const App = () => {
     }
   };
 
-  // ฟังก์ชันส่งข้อมูลไป Sheets
   const postToSheets = async (payload) => {
-    if (!GOOGLE_SHEET_WEBAPP_URL || GOOGLE_SHEET_WEBAPP_URL.trim() === "") {
-      console.warn("Cannot post: No Web App URL defined.");
-      return;
-    }
+    if (!GOOGLE_SHEET_WEBAPP_URL || GOOGLE_SHEET_WEBAPP_URL.trim() === "") return;
     
     try {
       await fetch(GOOGLE_SHEET_WEBAPP_URL, {
@@ -67,8 +60,8 @@ const App = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      // หน่วงเวลาเล็กน้อยก่อนดึงข้อมูลใหม่เพื่อให้ฝั่ง Server ประมวลผลเสร็จ
-      setTimeout(fetchDataFromSheets, 2500);
+      // หน่วงเวลาให้ Server บันทึกก่อนดึงใหม่
+      setTimeout(fetchDataFromSheets, 3000);
     } catch (error) {
       console.error("Post Error:", error);
     }
@@ -97,9 +90,7 @@ const App = () => {
       .then(stream => {
         if (videoRef.current) videoRef.current.srcObject = stream;
       })
-      .catch(err => {
-        console.error("Camera access denied or not found:", err);
-      });
+      .catch(err => console.error("Camera error:", err));
     }
   };
 
@@ -112,19 +103,14 @@ const App = () => {
       name: userName,
       date: currentTime.toLocaleDateString('th-TH'),
       time: currentTime.toLocaleTimeString('th-TH', { hour12: false }),
-      status: status,
+      status: status, // 'IN' หรือ 'OUT'
       id: Date.now(),
       note: currentTime.getHours() >= 9 && status === 'IN' ? 'สาย' : 'ปกติ'
     };
 
-    // แสดง Feedback ที่หน้าจอทันที
     setLastLog({ ...newLogEntry, status });
     setIdentifiedUser(null);
-    
-    // ส่งข้อมูลไป Cloud
     await postToSheets(newLogEntry);
-    
-    // เคลียร์หน้าจอ Success หลัง 4 วินาที
     setTimeout(() => setLastLog(null), 4000);
   };
 
@@ -142,18 +128,14 @@ const App = () => {
     setNewName('');
   };
 
-  // --- UI COMPONENTS ---
-
   if (appMode === 'kiosk') {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden text-slate-200">
-        {/* Background Decorations */}
         <div className="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600 rounded-full blur-[120px]"></div>
           <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600 rounded-full blur-[120px]"></div>
         </div>
 
-        {/* Header Section */}
         <div className="absolute top-8 left-8 right-8 flex justify-between items-center z-20">
           <div className="flex items-center gap-3">
             <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg">
@@ -174,7 +156,6 @@ const App = () => {
           </div>
         </div>
 
-        {/* Main Content */}
         <div className="relative w-full max-w-6xl z-10 flex flex-col lg:flex-row gap-10 items-stretch pb-16">
           <div className="flex-1 space-y-6">
             <div className="bg-black rounded-[3rem] overflow-hidden shadow-2xl aspect-video relative border-[12px] border-slate-900 group">
@@ -201,7 +182,6 @@ const App = () => {
               )}
             </div>
 
-            {/* Face Identity Info */}
             <div className="bg-slate-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex items-center justify-between shadow-xl">
                <div className="flex items-center gap-6">
                   <div className={`p-5 rounded-3xl transition-colors duration-500 ${identifiedUser ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
@@ -224,7 +204,6 @@ const App = () => {
             </div>
           </div>
 
-          {/* Action Buttons */}
           <div className="w-full lg:w-80 flex flex-col gap-6">
             <button 
               onClick={() => handleRecord('IN')} 
@@ -245,7 +224,6 @@ const App = () => {
           </div>
         </div>
 
-        {/* Footer Settings Link */}
         <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50">
           <button onClick={() => setShowExitConfirm(true)} className="flex items-center gap-3 px-10 py-4 bg-white/5 hover:bg-white/10 text-slate-500 rounded-full border border-white/5 backdrop-blur-md transition-all">
             <Settings size={16} />
@@ -253,17 +231,15 @@ const App = () => {
           </button>
         </div>
 
-        {/* Password Modal */}
         {showExitConfirm && (
           <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
             <div className="bg-slate-900 rounded-[3rem] p-12 max-w-sm w-full border border-white/10 shadow-2xl">
-              <p className="text-center text-[10px] font-black text-slate-500 uppercase tracking-widest mb-6">Enter Admin PIN</p>
               <input 
                 type="password" 
                 placeholder="••••"
                 autoFocus
                 maxLength={4}
-                className="w-full p-6 bg-slate-800 border border-slate-700 rounded-3xl text-white font-black text-center text-5xl mb-10 outline-none focus:border-indigo-500"
+                className="w-full p-6 bg-slate-800 border border-slate-700 rounded-3xl text-white font-black text-center text-5xl mb-10 outline-none"
                 value={passInput}
                 onChange={(e) => setPassInput(e.target.value)}
               />
@@ -278,7 +254,6 @@ const App = () => {
     );
   }
 
-  // --- ADMIN MODE UI ---
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-700 overflow-hidden font-sans">
       <aside className="w-72 bg-slate-900 text-slate-300 flex flex-col shrink-0">
@@ -325,8 +300,8 @@ const App = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {logs.length > 0 ? logs.map(log => (
-                    <tr key={log.id} className="hover:bg-slate-50/80 transition-colors group">
+                  {logs.length > 0 ? logs.map((log, index) => (
+                    <tr key={index} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="px-8 py-5">
                          <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 font-black text-xs uppercase">{log.name?.charAt(0)}</div>
@@ -352,21 +327,15 @@ const App = () => {
             </div>
           ) : (
             <div className="max-w-4xl mx-auto space-y-8">
+               {/* ส่วนลงทะเบียนพนักงาน */}
                <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-xl flex gap-6 items-center">
                   <div className="flex-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">ลงทะเบียนพนักงานใหม่</p>
-                    <input 
-                      type="text" 
-                      placeholder="พิมพ์ชื่อ-นามสกุล..." 
-                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold focus:border-indigo-500" 
-                      value={newName} 
-                      onChange={(e) => setNewName(e.target.value)} 
-                    />
+                    <input type="text" placeholder="พิมพ์ชื่อ-นามสกุล..." className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none font-bold" value={newName} onChange={(e) => setNewName(e.target.value)} />
                   </div>
-                  <button onClick={registerEmployee} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 h-14 mt-6 rounded-2xl font-black uppercase text-xs tracking-widest transition-all shadow-lg shadow-indigo-600/30">
-                    Add to Sheets
-                  </button>
+                  <button onClick={registerEmployee} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 h-14 mt-6 rounded-2xl font-black uppercase text-xs tracking-widest transition-all">Add Employee</button>
                </div>
+               {/* ตารางพนักงาน */}
                <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl overflow-hidden">
                   <table className="w-full text-left">
                      <thead className="bg-slate-50/50 border-b border-slate-100">
@@ -376,14 +345,12 @@ const App = () => {
                         </tr>
                      </thead>
                      <tbody className="divide-y divide-slate-100">
-                        {employeeData.length > 0 ? employeeData.map(emp => (
+                        {employeeData.map(emp => (
                           <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors">
                              <td className="px-10 py-5"><span className="font-bold text-slate-700 text-lg">{emp.label}</span></td>
                              <td className="px-10 py-5 text-right"><button className="p-3 text-slate-300 hover:text-rose-500 rounded-xl transition-all"><Trash2 size={20} /></button></td>
                           </tr>
-                        )) : (
-                          <tr><td colSpan="2" className="p-10 text-center text-slate-400 italic">ไม่มีรายชื่อพนักงาน</td></tr>
-                        )}
+                        ))}
                      </tbody>
                   </table>
                </div>
