@@ -8,13 +8,12 @@ import {
 // --- CONFIGURATION ---
 const ADMIN_PASSWORD = "1234";
 
-/** * แทนที่ URL นี้ด้วย Web App URL ที่ได้จาก Google Apps Script 
- * (ดูวิธีทำในไฟล์ Deployment Guide)
+/** * คัดลอก "Web App URL" ที่ได้จากขั้นตอน Deploy ใน Google Apps Script มาวางที่นี่
+ * ตัวอย่าง: https://script.google.com/macros/s/XXXXX/exec
  */
-const GOOGLE_SHEET_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxVMyemmEH-mgyFqaHfLFEbFmBrT5dbKAy5N0sSKSbMUNIUMs_zQqxIn0TYvioqWugOEA/exec"; 
+const GOOGLE_SHEET_WEBAPP_URL = ""; 
 
 const App = () => {
-  // --- STATES ---
   const [appMode, setAppMode] = useState('kiosk');
   const [activeTab, setActiveTab] = useState('overview'); 
   const [isModelLoading, setIsModelLoading] = useState(true);
@@ -30,9 +29,12 @@ const App = () => {
 
   const videoRef = useRef(null);
 
-  // --- GOOGLE SHEETS SYNC ---
+  // ดึงข้อมูลจาก Google Sheets
   const fetchDataFromSheets = async () => {
-    if (!GOOGLE_SHEET_WEBAPP_URL) return;
+    if (!GOOGLE_SHEET_WEBAPP_URL) {
+      console.warn("ยังไม่ได้ใส่ Web App URL ของ Google Sheets");
+      return;
+    }
     setIsSyncing(true);
     try {
       const response = await fetch(GOOGLE_SHEET_WEBAPP_URL);
@@ -40,27 +42,39 @@ const App = () => {
       setEmployeeData(data.employees || []);
       setLogs(data.logs || []);
     } catch (error) {
-      console.error("Error fetching from Google Sheets:", error);
+      console.error("Error fetching data:", error);
     } finally {
       setIsSyncing(false);
     }
   };
 
+  // ส่งข้อมูลไปบันทึกที่ Google Sheets
   const postToSheets = async (payload) => {
-    if (!GOOGLE_SHEET_WEBAPP_URL) return;
+    if (!GOOGLE_SHEET_WEBAPP_URL) {
+      console.error("ไม่สามารถบันทึกได้: ยังไม่ได้ใส่ Web App URL");
+      return;
+    }
+    
     try {
+      // ใช้ fetch แบบ 'no-cors' สำหรับ Apps Script POST 
+      // หรือใช้รูปแบบปกติถ้า Apps Script รองรับ CORS สมบูรณ์
       await fetch(GOOGLE_SHEET_WEBAPP_URL, {
         method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
+        mode: 'no-cors', 
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify(payload)
       });
+      
+      // เนื่องจาก no-cors จะไม่คืนค่าตอบกลับที่อ่านได้ เราจะลองรีเฟรชข้อมูลหลังส่ง 2 วินาที
+      setTimeout(fetchDataFromSheets, 2000);
+      
     } catch (error) {
-      console.error("Error posting to Google Sheets:", error);
+      console.error("Error posting data to Sheets:", error);
     }
   };
 
-  // --- INITIALIZATION ---
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     fetchDataFromSheets();
@@ -75,11 +89,13 @@ const App = () => {
   }, [appMode]);
 
   const startVideo = () => {
-    navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
-      .then(stream => {
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      })
-      .catch(err => console.error("Camera error:", err));
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+        .then(stream => {
+          if (videoRef.current) videoRef.current.srcObject = stream;
+        })
+        .catch(err => console.error("Camera error:", err));
+    }
   };
 
   const handleRecord = async (status) => {
@@ -96,12 +112,11 @@ const App = () => {
       note: currentTime.getHours() >= 9 && status === 'IN' ? 'สาย' : 'ปกติ'
     };
 
-    // Optimistic Update
     setLogs(prev => [newLog, ...prev]);
     setLastLog(newLog);
     setIdentifiedUser(null);
     
-    // Sync to Google Sheets
+    // ส่งไป Google Sheets
     await postToSheets(newLog);
     
     setTimeout(() => setLastLog(null), 4000);
@@ -116,122 +131,139 @@ const App = () => {
       role: 'พนักงาน', 
       joined: new Date().toLocaleDateString('th-TH') 
     };
-    
     setEmployeeData(prev => [...prev, newEntry]);
+    
+    // ส่งไป Google Sheets
     await postToSheets(newEntry);
+    
     setNewName('');
   };
 
-  // --- RENDER KIOSK MODE ---
   if (appMode === 'kiosk') {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
-          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600 rounded-full blur-[120px]"></div>
-          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600 rounded-full blur-[120px]"></div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden text-slate-200">
+        <div className="absolute top-0 left-0 w-full h-full opacity-30 pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-indigo-600 rounded-full blur-[120px]"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-blue-600 rounded-full blur-[120px]"></div>
         </div>
 
         <div className="absolute top-8 left-8 right-8 flex justify-between items-center z-20">
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 p-2 rounded-lg text-white">
-              <ShieldCheck size={24} />
+            <div className="bg-indigo-600 p-3 rounded-2xl text-white shadow-lg shadow-indigo-500/20">
+              <ShieldCheck size={28} />
             </div>
             <div>
-              <h1 className="text-xl font-black text-white tracking-tight uppercase">FaceAuth <span className="text-indigo-400">Scan</span></h1>
-              <p className="text-[10px] text-slate-400 font-bold tracking-[0.2em]">CLOUD TERMINAL</p>
+              <h1 className="text-2xl font-black text-white tracking-tight uppercase">FaceAuth <span className="text-indigo-400">Scan</span></h1>
+              <p className="text-[10px] text-slate-400 font-bold tracking-[0.3em] uppercase">Cloud Attendance System</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-3xl font-mono font-bold text-white leading-none">{currentTime.toLocaleTimeString('th-TH', { hour12: false })}</p>
-            <p className="text-xs font-bold text-indigo-400 mt-1 uppercase">{currentTime.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            <p className="text-4xl font-mono font-bold text-white leading-none tabular-nums">
+              {currentTime.toLocaleTimeString('th-TH', { hour12: false })}
+            </p>
+            <p className="text-xs font-bold text-indigo-400 mt-2 uppercase tracking-wider">
+              {currentTime.toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
           </div>
         </div>
 
-        <div className="relative w-full max-w-5xl z-10 flex flex-col lg:flex-row gap-8 items-center pb-20">
-          <div className="w-full lg:w-2/3 space-y-6">
-            <div className="bg-black rounded-[2.5rem] overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] aspect-video relative border-8 border-slate-900 group">
-              <video ref={videoRef} autoPlay muted className="w-full h-full object-cover grayscale-[20%]" />
+        <div className="relative w-full max-w-6xl z-10 flex flex-col lg:flex-row gap-10 items-stretch pb-16">
+          <div className="flex-1 space-y-6">
+            <div className="bg-black rounded-[3rem] overflow-hidden shadow-[0_0_60px_-15px_rgba(79,70,229,0.3)] aspect-video relative border-[12px] border-slate-900 group">
+              <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
+              <div className="absolute inset-0 border-[2px] border-white/10 rounded-[2.2rem] pointer-events-none"></div>
+              
               {isModelLoading && (
                 <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-white z-20">
-                  <RefreshCw className="animate-spin text-indigo-500 mb-4" size={48} />
-                  <p className="text-sm font-black tracking-widest uppercase">กำลังเชื่อมต่อระบบ Cloud...</p>
+                  <RefreshCw className="animate-spin text-indigo-500 mb-6" size={56} />
+                  <p className="text-sm font-black tracking-[0.2em] uppercase">Initializing Cloud AI...</p>
                 </div>
               )}
+
               {lastLog && (
-                <div className="absolute inset-0 bg-emerald-600/90 flex flex-col items-center justify-center text-white z-30 animate-in fade-in duration-300 text-center px-4">
-                  <CheckCircle2 size={100} className="mb-4 animate-bounce" />
-                  <h2 className="text-5xl font-black mb-2 uppercase">บันทึกสำเร็จ</h2>
-                  <p className="text-xl font-bold opacity-80">{lastLog.name} • {lastLog.time}</p>
+                <div className="absolute inset-0 bg-emerald-500/90 backdrop-blur-sm flex flex-col items-center justify-center text-white z-30 animate-in fade-in zoom-in duration-300 text-center px-8">
+                  <div className="bg-white/20 p-6 rounded-full mb-6">
+                    <CheckCircle2 size={80} className="animate-bounce" />
+                  </div>
+                  <h2 className="text-6xl font-black mb-3 uppercase tracking-tighter">Success!</h2>
+                  <p className="text-2xl font-bold opacity-90">{lastLog.name}</p>
+                  <p className="text-lg opacity-70 mt-1">{lastLog.time} • Recorded to Cloud</p>
                 </div>
               )}
             </div>
 
-            <div className="bg-slate-900/50 backdrop-blur-md p-6 rounded-[2rem] border border-white/5 flex items-center justify-between">
-               <div className="flex items-center gap-4">
-                  <div className={`p-4 rounded-2xl ${identifiedUser ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-500'}`}>
-                    <Camera size={32} />
+            <div className="bg-slate-900/40 backdrop-blur-xl p-8 rounded-[2.5rem] border border-white/10 flex items-center justify-between shadow-xl">
+               <div className="flex items-center gap-6">
+                  <div className={`p-5 rounded-3xl transition-colors duration-500 ${identifiedUser ? 'bg-indigo-600 text-white animate-pulse' : 'bg-slate-800 text-slate-500'}`}>
+                    <Camera size={40} />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">การตรวจจับใบหน้า</p>
-                    <h3 className="text-2xl font-black text-white">{identifiedUser || 'รอการสแกนใบหน้า...'}</h3>
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Face Recognition</p>
+                    <h3 className="text-3xl font-black text-white tracking-tight">{identifiedUser || 'Scanning...'}</h3>
                   </div>
                </div>
                {!identifiedUser && employeeData.length > 0 && (
                  <select 
                   onChange={(e) => setIdentifiedUser(e.target.value)}
-                  className="bg-slate-800 border-none rounded-xl px-4 py-3 text-white text-sm font-bold outline-none"
+                  className="bg-slate-800/80 border border-white/10 rounded-2xl px-6 py-4 text-white text-base font-bold outline-none cursor-pointer hover:bg-slate-700 transition-colors"
                  >
-                   <option value="">เลือกชื่อ (Manual)</option>
+                   <option value="">Select Name (Manual)</option>
                    {employeeData.map(e => <option key={e.id} value={e.label}>{e.label}</option>)}
                  </select>
                )}
             </div>
           </div>
 
-          <div className="w-full lg:w-1/3 flex flex-col gap-6">
-            <button onClick={() => handleRecord('IN')} disabled={!identifiedUser || lastLog} className="flex-1 py-12 rounded-[2.5rem] bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-800 text-white transition-all shadow-xl active:scale-95 group">
-              <div className="flex flex-col items-center gap-2">
-                <LogIn size={48} />
-                <span className="text-3xl font-black uppercase">เข้างาน</span>
+          <div className="w-full lg:w-80 flex flex-col gap-6">
+            <button 
+              onClick={() => handleRecord('IN')} 
+              disabled={!identifiedUser || lastLog} 
+              className="flex-1 py-10 rounded-[3rem] bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800/50 disabled:text-slate-600 text-white transition-all shadow-2xl shadow-emerald-500/20 active:scale-95 group overflow-hidden relative"
+            >
+              <div className="relative z-10 flex flex-col items-center gap-4">
+                <LogIn size={54} className="group-hover:translate-x-1 transition-transform" />
+                <span className="text-3xl font-black uppercase tracking-tighter">Check In</span>
               </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             </button>
-            <button onClick={() => handleRecord('OUT')} disabled={!identifiedUser || lastLog} className="flex-1 py-12 rounded-[2.5rem] bg-rose-500 hover:bg-rose-600 disabled:bg-slate-800 text-white transition-all shadow-xl active:scale-95 group">
-              <div className="flex flex-col items-center gap-2">
-                <LogOut size={48} />
-                <span className="text-3xl font-black uppercase">ออกงาน</span>
+
+            <button 
+              onClick={() => handleRecord('OUT')} 
+              disabled={!identifiedUser || lastLog} 
+              className="flex-1 py-10 rounded-[3rem] bg-rose-500 hover:bg-rose-400 disabled:bg-slate-800/50 disabled:text-slate-600 text-white transition-all shadow-2xl shadow-rose-500/20 active:scale-95 group overflow-hidden relative"
+            >
+              <div className="relative z-10 flex flex-col items-center gap-4">
+                <LogOut size={54} className="group-hover:-translate-x-1 transition-transform" />
+                <span className="text-3xl font-black uppercase tracking-tighter">Check Out</span>
               </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
             </button>
           </div>
         </div>
 
-        <div className="absolute bottom-6 left-0 right-0 flex justify-center z-50">
-          <button onClick={() => setShowExitConfirm(true)} className="flex items-center gap-2 px-8 py-3 bg-white/5 hover:bg-white/10 text-slate-500 hover:text-slate-300 transition-all rounded-full border border-white/5 backdrop-blur-sm">
-            <Settings size={14} className="opacity-50" />
-            <span className="text-[10px] font-black uppercase tracking-[0.4em]">Exit Kiosk System</span>
+        <div className="absolute bottom-8 left-0 right-0 flex justify-center z-50">
+          <button onClick={() => setShowExitConfirm(true)} className="flex items-center gap-3 px-10 py-4 bg-white/5 hover:bg-white/10 text-slate-500 hover:text-slate-300 transition-all rounded-full border border-white/5 backdrop-blur-md group">
+            <Settings size={16} className="group-hover:rotate-90 transition-transform duration-500" />
+            <span className="text-[10px] font-black uppercase tracking-[0.5em]">Kiosk Settings</span>
           </button>
         </div>
 
         {showExitConfirm && (
-          <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[100] flex items-center justify-center p-6">
-            <div className="bg-slate-900 rounded-[2.5rem] p-10 max-w-sm w-full border border-white/10">
+          <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[100] flex items-center justify-center p-6 animate-in fade-in duration-300">
+            <div className="bg-slate-900 rounded-[3rem] p-12 max-w-sm w-full border border-white/10 shadow-2xl">
+              <h3 className="text-white text-center font-black uppercase tracking-widest mb-8 text-sm opacity-50">Admin PIN Required</h3>
               <input 
                 type="password" 
-                placeholder="0000"
+                placeholder="••••"
                 autoFocus
-                className="w-full p-5 bg-slate-800 border border-slate-700 rounded-2xl text-white font-black text-center text-3xl tracking-[0.6em] mb-8 outline-none"
+                maxLength={4}
+                className="w-full p-6 bg-slate-800 border border-slate-700 rounded-3xl text-white font-black text-center text-5xl tracking-[0.5em] mb-10 outline-none focus:border-indigo-500 transition-colors shadow-inner"
                 value={passInput}
                 onChange={(e) => setPassInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && passInput === ADMIN_PASSWORD) {
-                    setAppMode('admin');
-                    setShowExitConfirm(false);
-                    setPassInput('');
-                  }
-                }}
               />
-              <div className="grid grid-cols-2 gap-4">
-                <button onClick={() => {setShowExitConfirm(false); setPassInput('');}} className="py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">ยกเลิก</button>
-                <button onClick={() => { if (passInput === ADMIN_PASSWORD) { setAppMode('admin'); setShowExitConfirm(false); setPassInput(''); } }} className="py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest">ยืนยัน</button>
+              <div className="grid grid-cols-2 gap-6">
+                <button onClick={() => {setShowExitConfirm(false); setPassInput('');}} className="py-5 text-slate-400 font-black uppercase text-xs tracking-widest hover:text-white transition-colors">Cancel</button>
+                <button onClick={() => { if (passInput === ADMIN_PASSWORD) { setAppMode('admin'); setShowExitConfirm(false); setPassInput(''); } }} className="py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 transition-all active:scale-95">Verify</button>
               </div>
             </div>
           </div>
@@ -240,92 +272,126 @@ const App = () => {
     );
   }
 
-  // --- RENDER ADMIN DASHBOARD ---
   return (
     <div className="flex h-screen bg-[#f8fafc] text-slate-700 overflow-hidden font-sans">
-      <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-indigo-500 p-2 rounded-lg text-white"><LayoutDashboard size={20} /></div>
-          <span className="font-bold text-white tracking-tight">Admin Sheet Console</span>
+      <aside className="w-72 bg-slate-900 text-slate-300 flex flex-col shrink-0">
+        <div className="p-8 flex items-center gap-4 border-b border-slate-800">
+          <div className="bg-indigo-500 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-500/20"><LayoutDashboard size={24} /></div>
+          <span className="font-black text-white tracking-tight text-lg">Sheet Console</span>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
-          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === 'overview' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}>
-            <History size={18} /> สรุปเวลา (Sheets)
+        <nav className="flex-1 p-6 space-y-2">
+          <button onClick={() => setActiveTab('overview')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-sm ${activeTab === 'overview' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800 hover:text-white'}`}>
+            <History size={20} /> Attendance Logs
           </button>
-          <button onClick={() => setActiveTab('directory')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${activeTab === 'directory' ? 'bg-indigo-600 text-white' : 'hover:bg-slate-800'}`}>
-            <Users size={18} /> จัดการพนักงาน
+          <button onClick={() => setActiveTab('directory')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-sm ${activeTab === 'directory' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'hover:bg-slate-800 hover:text-white'}`}>
+            <Users size={20} /> Employee Cloud
           </button>
-          <div className="h-4"></div>
-          <button onClick={() => setAppMode('kiosk')} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm bg-slate-800 text-indigo-400 hover:bg-slate-700">
-            <Monitor size={18} /> กลับหน้า Kiosk
+          <div className="pt-8 pb-4">
+             <div className="h-px bg-slate-800"></div>
+          </div>
+          <button onClick={() => setAppMode('kiosk')} className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-sm bg-slate-800 text-indigo-400 hover:bg-slate-700">
+            <Monitor size={20} /> Launch Kiosk
           </button>
         </nav>
-        <div className="p-4 bg-slate-950 text-[10px] text-center">
-            {isSyncing ? 'กำลังซิงค์ข้อมูล...' : 'Cloud Connected'}
+        <div className="p-6 bg-slate-950/50">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-900 border border-white/5">
+               <div className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+               <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                  {isSyncing ? 'Syncing Cloud...' : 'Database Connected'}
+               </span>
+            </div>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 px-8 flex justify-between items-center shrink-0">
-          <h2 className="text-lg font-bold text-slate-800 capitalize">{activeTab === 'overview' ? 'บันทึกจาก Google Sheets' : 'รายชื่อใน Cloud'}</h2>
-          <button onClick={fetchDataFromSheets} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors">
-            <RefreshCw size={18} className={isSyncing ? 'animate-spin' : ''} />
+        <header className="h-20 bg-white border-b border-slate-200 px-10 flex justify-between items-center shrink-0 shadow-sm z-10">
+          <h2 className="text-xl font-black text-slate-800 tracking-tight uppercase">
+            {activeTab === 'overview' ? 'Google Sheets Sync' : 'Employee Directory'}
+          </h2>
+          <button 
+            onClick={fetchDataFromSheets} 
+            className="group flex items-center gap-3 px-6 py-2.5 bg-slate-100 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-full transition-all border border-slate-200"
+          >
+            <span className="text-[10px] font-black uppercase tracking-widest">Refresh Sheets</span>
+            <RefreshCw size={16} className={isSyncing ? 'animate-spin' : 'group-active:rotate-180 transition-transform duration-500'} />
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8">
-          {activeTab === 'overview' && (
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-left">
-                <thead className="bg-slate-50 border-b border-slate-100">
+        <div className="flex-1 overflow-y-auto p-10 bg-[#f8fafc]">
+          {activeTab === 'overview' ? (
+            <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50/50 border-b border-slate-100">
                   <tr>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">ชื่อ</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">วันที่</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">เวลา</th>
-                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase">สถานะ</th>
+                    <th className="px-8 py-6 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Employee</th>
+                    <th className="px-8 py-6 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Date</th>
+                    <th className="px-8 py-6 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Time</th>
+                    <th className="px-8 py-6 text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {logs.map(log => (
-                    <tr key={log.id} className="hover:bg-slate-50">
-                      <td className="px-6 py-4 font-bold text-slate-700">{log.name}</td>
-                      <td className="px-6 py-4 text-sm text-slate-500">{log.date}</td>
-                      <td className="px-6 py-4 text-sm font-mono text-slate-600">{log.time}</td>
-                      <td className="px-6 py-4">
-                         <span className={`px-2 py-1 rounded-md text-[9px] font-black tracking-widest uppercase ${log.status === 'IN' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                  {logs.length > 0 ? logs.map(log => (
+                    <tr key={log.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-8 py-5">
+                         <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors font-black text-xs">
+                               {log.name ? log.name.charAt(0) : '?'}
+                            </div>
+                            <span className="font-bold text-slate-700">{log.name}</span>
+                         </div>
+                      </td>
+                      <td className="px-8 py-5 text-sm text-slate-500 font-medium">{log.date}</td>
+                      <td className="px-8 py-5 text-sm font-mono text-slate-600 font-bold">{log.time}</td>
+                      <td className="px-8 py-5">
+                         <span className={`px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase inline-block ${log.status === 'IN' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
                             {log.status}
                          </span>
                       </td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan="4" className="px-8 py-20 text-center text-slate-400 font-bold italic uppercase tracking-widest text-xs">No records found in Sheets</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-          )}
-
-          {activeTab === 'directory' && (
-            <div className="max-w-4xl mx-auto space-y-6">
-               <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex gap-4">
-                  <input 
-                    type="text" 
-                    placeholder="ชื่อพนักงานใหม่..." 
-                    className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                  <button onClick={registerEmployee} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold">
-                     เพิ่มรายชื่อไปที่ Cloud
+          ) : (
+            <div className="max-w-4xl mx-auto space-y-8">
+               <div className="bg-white p-10 rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 flex gap-6 items-center">
+                  <div className="flex-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">New Registration</p>
+                    <input 
+                      type="text" 
+                      placeholder="Enter full name..." 
+                      className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:border-indigo-500 transition-colors font-bold"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                  </div>
+                  <button onClick={registerEmployee} className="bg-indigo-600 hover:bg-indigo-700 text-white px-10 h-14 mt-6 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg shadow-indigo-600/30 transition-all active:scale-95">
+                     Add to Cloud
                   </button>
                </div>
-               <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
+
+               <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden">
                   <table className="w-full text-left">
+                     <thead className="bg-slate-50/50 border-b border-slate-100">
+                        <tr>
+                           <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase">Employee Name</th>
+                           <th className="px-10 py-5 text-[10px] font-black text-slate-400 uppercase text-right">Actions</th>
+                        </tr>
+                     </thead>
                      <tbody className="divide-y divide-slate-100">
                         {employeeData.map(emp => (
-                          <tr key={emp.id} className="hover:bg-slate-50">
-                             <td className="px-8 py-4 font-bold text-slate-700">{emp.label}</td>
-                             <td className="px-8 py-4 text-sm text-slate-500">{emp.joined}</td>
-                             <td className="px-8 py-4 text-right">
-                                <button className="p-2 text-slate-300 hover:text-rose-500"><Trash2 size={16} /></button>
+                          <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors">
+                             <td className="px-10 py-5">
+                                <span className="font-bold text-slate-700 text-lg">{emp.label}</span>
+                             </td>
+                             <td className="px-10 py-5 text-right">
+                                <button className="p-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all">
+                                   <Trash2 size={20} />
+                                </button>
                              </td>
                           </tr>
                         ))}
