@@ -1,0 +1,10 @@
+{
+  "files": {
+    "main.js": "/face-attendance-kiosk/static/js/main.a840a53c.js",
+    "index.html": "/face-attendance-kiosk/index.html",
+    "main.a840a53c.js.map": "/face-attendance-kiosk/static/js/main.a840a53c.js.map"
+  },
+  "entrypoints": [
+    "static/js/main.a840a53c.js"
+  ]
+}
